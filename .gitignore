@@ -1,5 +1,6 @@
 # Object files
 *.o
+*.d
 
 # Libraries
 *.lib
@@ -16,3 +17,6 @@
 
 *~
 *._*
+
+# Lab 3 files
+sr
