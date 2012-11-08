@@ -1,0 +1,24 @@
+# Object files
+*.o
+
+# Libraries
+*.lib
+*.a
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+
+*~
+*._*
+
+$ Lab 1 specific files
+reliable/reliable
+reliable/uc
+reliable/reliable.tar.gz
+ec2/*
