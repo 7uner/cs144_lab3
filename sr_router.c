@@ -83,22 +83,24 @@ void handle_arp_request (struct sr_instance* sr,
         char *interface)
 {
   /* we can assume arp request is for us since vns_comm.c module has already 
-     performed that check for us (see sr_arp_req_not_for_us function) */
+     performed that check (see sr_arp_req_not_for_us function) */
 
   struct sr_if* iface = sr_get_interface(sr, interface);
   assert(iface);
 
+  /* malloc space for reply packet */
   unsigned int reply_len = sizeof (sr_ethernet_hdr_t) + sizeof (sr_arp_hdr_t);
   uint8_t *reply_pkt = malloc (reply_len);
   sr_ethernet_hdr_t *reply_ethernet_hdr = (sr_ethernet_hdr_t *)reply_pkt;
   sr_arp_hdr_t *reply_arp_hdr = (sr_arp_hdr_t *)(reply_pkt + sizeof (sr_ethernet_hdr_t));
 
+  /* fill out the ethernet header and convert to network byte order */
   memcpy (reply_ethernet_hdr->ether_dhost, req_arp_hdr->ar_sha, ETHER_ADDR_LEN);
   memcpy (reply_ethernet_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
   reply_ethernet_hdr->ether_type = ethertype_arp;
-
   convert_ethernet_hdr_to_network_byte_order (reply_ethernet_hdr);
 
+  /* fill out the ARP header and convert to network byte order */
   reply_arp_hdr->ar_hrd = arp_hrd_ethernet;
   reply_arp_hdr->ar_pro = ethertype_ip;
   reply_arp_hdr->ar_hln = ETHER_ADDR_LEN;
@@ -108,11 +110,10 @@ void handle_arp_request (struct sr_instance* sr,
   reply_arp_hdr->ar_sip = iface->ip;
   memcpy (reply_arp_hdr->ar_tha, req_arp_hdr->ar_sha, ETHER_ADDR_LEN);
   reply_arp_hdr->ar_tip = req_arp_hdr->ar_sip;
-
   convert_arp_hdr_to_network_byte_order (reply_arp_hdr);
 
+  /* send ARP reply over the wire */
   sr_send_packet(sr, reply_pkt, reply_len, interface);
-
   free (reply_pkt);
 }
 
