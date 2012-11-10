@@ -114,16 +114,19 @@ void handle_arp_request (struct sr_instance *sr,
   free (reply_pkt);
 }
 
-void handle_arp_reply (struct sr_instance *sr, uint8_t *packet)
+void handle_arp_reply (struct sr_instance *sr, 
+                       sr_arp_hdr_t *arp_hdr, 
+                       struct sr_if *iface)
 {
   // TODO: implement
   printf("In handle_arp_reply: NOT IMPLEMENTED.\n");
 }
 
 void sr_handle_arp_packet (struct sr_instance *sr,
-        uint8_t *packet,
+        sr_arp_hdr_t *arp_hdr,
         unsigned int len,
-        struct sr_if *iface)
+        struct sr_if *iface, 
+        int isBroadcast)
 {
   /* drop packet if it does not have the min length of an arp packet */
   if (len < sizeof (sr_arp_hdr_t))
@@ -131,8 +134,6 @@ void sr_handle_arp_packet (struct sr_instance *sr,
     fprintf (stderr, "Dropping arp packet. Too short. len: %d.\n", len);
     return;
   }
-
-  sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)packet;
 
   convert_arp_hdr_to_host_byte_order (arp_hdr);
 
@@ -145,8 +146,12 @@ void sr_handle_arp_packet (struct sr_instance *sr,
 
   if (arp_hdr->ar_op == arp_op_request)
     handle_arp_request (sr, arp_hdr, iface);
-  else if (arp_hdr->ar_op == arp_op_reply) // TODO: continue
-    handle_arp_reply (sr, packet); 
+  else if (arp_hdr->ar_op == arp_op_reply)
+  {
+    if (isBroadcast) /* reply should be unicast */
+      return;
+    handle_arp_reply (sr, arp_hdr, iface); 
+  }
   else
     fprintf (stderr, "Unknown arp op code %d. Dropping arp packet.\n", arp_hdr->ar_op);
 }
@@ -207,16 +212,18 @@ void sr_handlepacket(struct sr_instance *sr,
 
   if (ethertype (packet) == ethertype_arp)
   {
+    ethernet_addr_t broadcast_addr = mac_string_to_bytes ("ff:ff:ff:ff:ff:ff");
+    int isBroadcast = eth_addr_equals (ether_hdr->ether_dhost, (uint8_t *)&broadcast_addr);
+
     /* drop the packet if it is not destined to our MAC address or its
      not a broadcast */
-    ethernet_addr_t broadcast_addr = mac_string_to_bytes ("ff:ff:ff:ff:ff:ff");
-    if (!eth_addr_equals (ether_hdr->ether_dhost, (uint8_t *)&broadcast_addr) &&
-        !eth_addr_equals (ether_hdr->ether_dhost, iface->addr))
+    if (!isBroadcast && !eth_addr_equals (ether_hdr->ether_dhost, iface->addr))
     { 
       printf ("Dropping arp packet. Destination eth_addr: %s not recognized.\n", ether_hdr->ether_dhost);
       return;
     }
-    sr_handle_arp_packet (sr, packet + sizeof (sr_ethernet_hdr_t), len - sizeof (sr_ethernet_hdr_t), iface);
+    sr_handle_arp_packet (sr, (sr_arp_hdr_t *)(packet + sizeof (sr_ethernet_hdr_t)), 
+                          len - sizeof (sr_ethernet_hdr_t), iface, isBroadcast);
   }
   // // TODO: continue
   // else if (ethertype (packet) == ethertype_ip)
