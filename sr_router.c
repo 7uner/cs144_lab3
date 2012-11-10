@@ -82,7 +82,7 @@ void handle_arp_request (struct sr_instance *sr,
         sr_arp_hdr_t *req_arp_hdr, 
         struct sr_if *iface)
 {
-  /* we can assume arp request is for us since vns_comm.c module has already 
+  /* we can assume arp request is for us (our ip) since vns_comm.c module has already 
      performed that check (see sr_arp_req_not_for_us function) */
 
   /* malloc space for reply packet */
@@ -114,12 +114,32 @@ void handle_arp_request (struct sr_instance *sr,
   free (reply_pkt);
 }
 
+void send_queued_packet (struct sr_instance *sr, 
+                         struct sr_packet *packet, 
+                         uint8_t *tha)
+{
+  unsigned int len = packet->len;
+  sr_ethernet_hdr_t *ether_hdr = (sr_ethernet_hdr_t *)packet->buf;
+  memcpy (&(ether_hdr->ether_dhost), tha, ETHER_ADDR_LEN);
+  sr_send_packet (sr, packet->buf, len, packet->iface);
+}
+
 void handle_arp_reply (struct sr_instance *sr, 
                        sr_arp_hdr_t *arp_hdr, 
                        struct sr_if *iface)
 {
-  // TODO: implement
-  printf("In handle_arp_reply: NOT IMPLEMENTED.\n");
+  if (arp_hdr->ar_tip != iface->ip)
+    return;
+
+  struct sr_arpreq *req = sr_arpcache_insert(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip);
+
+  if (req)
+  {
+    for (struct sr_packet *pkt = req->packets; pkt != NULL; pkt = pkt->next)
+      send_queued_packet (sr, pkt, arp_hdr->ar_sha);
+
+    sr_arpreq_destroy(&(sr->cache), req);
+  }
 }
 
 void sr_handle_arp_packet (struct sr_instance *sr,
@@ -137,10 +157,10 @@ void sr_handle_arp_packet (struct sr_instance *sr,
 
   convert_arp_hdr_to_host_byte_order (arp_hdr);
 
-  /* drop packet if it is not for IP address resolution */
-  if (arp_hdr->ar_pro != ethertype_ip)
+  /* drop packet if it is not for IP address resolution or if its not over ethernet */
+  if (arp_hdr->ar_hrd != arp_hrd_ethernet || arp_hdr->ar_pro != ethertype_ip)
   {
-    fprintf (stderr, "Received an ARP packet to resolve an address that is not IP.\n");
+    fprintf (stderr, "Received an ARP packet either non-ethernet or to resolve an address that is not IP.\n");
     return;
   }
 
