@@ -35,18 +35,18 @@
 void sr_init(struct sr_instance* sr)
 {
     /* REQUIRES */
-    assert(sr);
+    assert (sr);
 
     /* Initialize cache and cache cleanup thread */
-    sr_arpcache_init(&(sr->cache));
+    sr_arpcache_init (&(sr->cache));
 
-    pthread_attr_init(&(sr->attr));
-    pthread_attr_setdetachstate(&(sr->attr), PTHREAD_CREATE_JOINABLE);
-    pthread_attr_setscope(&(sr->attr), PTHREAD_SCOPE_SYSTEM);
-    pthread_attr_setscope(&(sr->attr), PTHREAD_SCOPE_SYSTEM);
+    pthread_attr_init (&(sr->attr));
+    pthread_attr_setdetachstate (&(sr->attr), PTHREAD_CREATE_JOINABLE);
+    pthread_attr_setscope (&(sr->attr), PTHREAD_SCOPE_SYSTEM);
+    pthread_attr_setscope (&(sr->attr), PTHREAD_SCOPE_SYSTEM);
     pthread_t thread;
 
-    pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
+    pthread_create (&thread, &(sr->attr), sr_arpcache_timeout, sr);
     
     /* Add initialization code here! */
 
@@ -78,15 +78,12 @@ void convert_ethernet_hdr_to_network_byte_order (sr_ethernet_hdr_t *hdr)
   hdr->ether_type = htons (hdr->ether_type);
 }
 
-void handle_arp_request (struct sr_instance* sr, 
+void handle_arp_request (struct sr_instance *sr, 
         sr_arp_hdr_t *req_arp_hdr, 
-        char *interface)
+        struct sr_if *iface)
 {
   /* we can assume arp request is for us since vns_comm.c module has already 
      performed that check (see sr_arp_req_not_for_us function) */
-
-  struct sr_if* iface = sr_get_interface(sr, interface);
-  assert(iface);
 
   /* malloc space for reply packet */
   unsigned int reply_len = sizeof (sr_ethernet_hdr_t) + sizeof (sr_arp_hdr_t);
@@ -113,26 +110,29 @@ void handle_arp_request (struct sr_instance* sr,
   convert_arp_hdr_to_network_byte_order (reply_arp_hdr);
 
   /* send ARP reply over the wire */
-  sr_send_packet(sr, reply_pkt, reply_len, interface);
+  sr_send_packet (sr, reply_pkt, reply_len, iface->name);
   free (reply_pkt);
 }
 
-void handle_arp_reply (uint8_t *packet)
+void handle_arp_reply (struct sr_instance *sr, uint8_t *packet)
 {
-    // TODO: implement
+  // TODO: implement
   printf("In handle_arp_reply: NOT IMPLEMENTED.\n");
 }
 
-void sr_handle_arp_packet (struct sr_instance* sr,
-        uint8_t * packet,
+void sr_handle_arp_packet (struct sr_instance *sr,
+        uint8_t *packet,
         unsigned int len,
-        char* interface)
+        struct sr_if *iface)
 {
   /* drop packet if it does not have the min length of an arp packet */
-  if (len < sizeof (sr_ethernet_hdr_t) + sizeof (sr_arp_hdr_t))
+  if (len < sizeof (sr_arp_hdr_t))
+  {
+    fprintf (stderr, "Dropping arp packet. Too short. len: %d.\n", len);
     return;
+  }
 
-  sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(packet + sizeof (sr_ethernet_hdr_t));
+  sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)packet;
 
   convert_arp_hdr_to_host_byte_order (arp_hdr);
 
@@ -144,20 +144,20 @@ void sr_handle_arp_packet (struct sr_instance* sr,
   }
 
   if (arp_hdr->ar_op == arp_op_request)
-    handle_arp_request (sr, arp_hdr, interface);
+    handle_arp_request (sr, arp_hdr, iface);
   else if (arp_hdr->ar_op == arp_op_reply) // TODO: continue
-    handle_arp_reply (packet); 
+    handle_arp_reply (sr, packet); 
   else
     fprintf (stderr, "Unknown arp op code %d. Dropping arp packet.\n", arp_hdr->ar_op);
 }
 
-void sr_handle_ip_packet (struct sr_instance* sr,
-        uint8_t * packet/* lent */,
+void sr_handle_ip_packet (struct sr_instance *sr,
+        uint8_t *packet,
         unsigned int len,
-        char* interface/* lent */)
+        struct sr_if *iface)
 {
   // TODO: implement
-  printf("In sr_handle_ip_packet: NOT IMPLEMENTED.\n");
+  printf ("In sr_handle_ip_packet: NOT IMPLEMENTED.\n");
 }
 
 
@@ -180,27 +180,53 @@ void sr_handle_ip_packet (struct sr_instance* sr,
  *
  *---------------------------------------------------------------------*/
 
-void sr_handlepacket(struct sr_instance* sr,
-        uint8_t * packet/* lent */,
+void sr_handlepacket(struct sr_instance *sr,
+        uint8_t *packet/* lent */,
         unsigned int len,
-        char* interface/* lent */)
+        char *interface/* lent */)
 {
   /* REQUIRES */
-  assert(sr);
-  assert(packet);
-  assert(interface);
+  assert (sr);
+  assert (packet);
+  assert (interface);
 
-  printf("*** -> Received packet of length %d \n",len);
-  print_hdrs(packet, len);
+  printf ("*** -> Received packet of length %d \n",len);
+  print_hdrs (packet, len);
 
   /* fill in code here */
-  if (ethertype (packet) == ethertype_arp)
-    sr_handle_arp_packet (sr, packet, len, interface);
-  // TODO: continue
-  // else if (ethertype (packet) == ethertype_ip)
-  //   sr_handle_ip_packet (sr, packet, len, interface);
-  // else
-  //   fprintf(stderr, "Unknown ethertype: %d. Dropping packet.\n", ethertype (packet));
+  struct sr_if *iface = sr_get_interface(sr, interface);
+  assert (iface);
+  sr_ethernet_hdr_t *ether_hdr = (sr_ethernet_hdr_t *)packet;
 
+  /* drop if packet is too short */
+  if (len < sizeof (sr_ethernet_hdr_t))
+  {
+    fprintf (stderr, "Dropping ethernet frame. Too short. len: %d.\n", len);
+    return;
+  }
+
+  if (ethertype (packet) == ethertype_arp)
+  {
+    /* drop the packet if it is not destined to our MAC address or its
+     not a broadcast */
+    ethernet_addr_t broadcast_addr = mac_string_to_bytes ("ff:ff:ff:ff:ff:ff");
+    if (!eth_addr_equals (ether_hdr->ether_dhost, (uint8_t *)&broadcast_addr) &&
+        !eth_addr_equals (ether_hdr->ether_dhost, iface->addr))
+    { 
+      printf ("Dropping arp packet. Destination eth_addr: %s not recognized.\n", ether_hdr->ether_dhost);
+      return;
+    }
+    sr_handle_arp_packet (sr, packet + sizeof (sr_ethernet_hdr_t), len - sizeof (sr_ethernet_hdr_t), iface);
+  }
+  // // TODO: continue
+  // else if (ethertype (packet) == ethertype_ip)
+  // {
+  //   /* drop packet if it's not destined to us */
+  //   if (!eth_addr_equals (ether_hdr->ether_dhost, iface->addr))
+  //     return;
+  //   sr_handle_ip_packet (sr, packet, len, iface);
+  // }
+  else
+    fprintf(stderr, "Unknown ethertype: %d. Dropping packet.\n", ethertype (packet));
 }/* end sr_ForwardPacket */
 

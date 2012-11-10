@@ -28,10 +28,21 @@
 #ifndef SR_UTILS_H
 #define SR_UTILS_H
 
+struct ethernet_addr
+{
+#ifndef ETHER_ADDR_LEN
+#define ETHER_ADDR_LEN 6
+#endif
+    uint8_t  bytes[ETHER_ADDR_LEN];
+} __attribute__ ((packed)) ;
+typedef struct ethernet_addr ethernet_addr_t;
+
 uint16_t cksum(const void *_data, int len);
 
 uint16_t ethertype(uint8_t *buf);
 uint8_t ip_protocol(uint8_t *buf);
+int eth_addr_equals (const uint8_t *addr1, const uint8_t *addr2);
+ethernet_addr_t mac_string_to_bytes (char *str);
 
 void print_addr_eth(uint8_t *addr);
 void print_addr_ip(struct in_addr address);

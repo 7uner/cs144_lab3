@@ -19,6 +19,25 @@ uint16_t cksum (const void *_data, int len) {
   return sum ? sum : 0xffff;
 }
 
+int eth_addr_equals (const uint8_t *addr1, const uint8_t *addr2)
+{
+  for (int i = 0; i < ETHER_ADDR_LEN; ++i)
+  {
+    if (*addr1 != *addr2)
+      return 0;
+    ++addr1;
+    ++addr2;
+  } 
+  return 1;
+}
+
+ethernet_addr_t mac_string_to_bytes (char *mac_str)
+{
+  ethernet_addr_t addr;
+  sscanf(mac_str, "%x:%x:%x:%x:%x:%x", &addr.bytes[0], &addr.bytes[1], &addr.bytes[2], &addr.bytes[3], &addr.bytes[4], &addr.bytes[5]);
+  return addr;
+}
+
 
 uint16_t ethertype(uint8_t *buf) {
   sr_ethernet_hdr_t *ehdr = (sr_ethernet_hdr_t *)buf;
