@@ -99,11 +99,11 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
    1) Looks up this IP in the request queue. If it is found, returns a pointer
       to the sr_arpreq with this IP. Otherwise, returns NULL.
    2) Inserts this IP to MAC mapping in the cache, and marks it valid. */
-struct sr_arpreq *sr_arpcache_insert(struct sr_arpcache *cache,
+struct sr_arpreq *sr_arpcache_insert (struct sr_arpcache *cache,
                                      unsigned char *mac,
                                      uint32_t ip)
 {
-    pthread_mutex_lock(&(cache->lock));
+    pthread_mutex_lock (&(cache->lock));
     
     struct sr_arpreq *req, *prev = NULL, *next = NULL; 
     for (req = cache->requests; req != NULL; req = req->next) {
@@ -122,20 +122,29 @@ struct sr_arpreq *sr_arpcache_insert(struct sr_arpcache *cache,
         prev = req;
     }
     
+    /* Look for a cache entry with the same ip to update */
     int i;
     for (i = 0; i < SR_ARPCACHE_SZ; i++) {
-        if (!(cache->entries[i].valid))
+        if (cache->entries[i].ip == ip)
             break;
     }
     
+    /* if this IP was not previously cached look for the first stale entry and replace it */
+    if (i == SR_ARPCACHE_SZ){
+        for (i = 0; i < SR_ARPCACHE_SZ; i++) {
+            if (!(cache->entries[i].valid))
+                break;
+        }
+    }
+
     if (i != SR_ARPCACHE_SZ) {
-        memcpy(cache->entries[i].mac, mac, 6);
+        memcpy (cache->entries[i].mac, mac, 6);
         cache->entries[i].ip = ip;
-        cache->entries[i].added = time(NULL);
+        cache->entries[i].added = time (NULL);
         cache->entries[i].valid = 1;
     }
     
-    pthread_mutex_unlock(&(cache->lock));
+    pthread_mutex_unlock (&(cache->lock));
     
     return req;
 }
