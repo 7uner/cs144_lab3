@@ -19,6 +19,8 @@ uint16_t cksum (const void *_data, int len) {
   return sum ? sum : 0xffff;
 }
 
+/* Equality test for two MAC addresses. Note that the two addresses must be arrays 
+   of 6 bytes, NOT the string representations of those addresses. */
 int eth_addr_equals (const uint8_t *addr1, const uint8_t *addr2)
 {
   for (int i = 0; i < ETHER_ADDR_LEN; ++i)
@@ -31,10 +33,18 @@ int eth_addr_equals (const uint8_t *addr1, const uint8_t *addr2)
   return 1;
 }
 
+/* Convert a string representing an MAC address to the sequence of bytes that it represents */
 ethernet_addr_t mac_string_to_bytes (char *mac_str)
 {
   ethernet_addr_t addr;
-  sscanf(mac_str, "%x:%x:%x:%x:%x:%x", &addr.bytes[0], &addr.bytes[1], &addr.bytes[2], &addr.bytes[3], &addr.bytes[4], &addr.bytes[5]);
+  unsigned int byte1, byte2, byte3, byte4, byte5, byte6;
+  sscanf(mac_str, "%x:%x:%x:%x:%x:%x", &byte1, &byte2, &byte3, &byte4, &byte5, &byte6);
+  addr.bytes[0] = (uint8_t)byte1;
+  addr.bytes[1] = (uint8_t)byte2;
+  addr.bytes[2] = (uint8_t)byte3;
+  addr.bytes[3] = (uint8_t)byte4;
+  addr.bytes[4] = (uint8_t)byte5;
+  addr.bytes[5] = (uint8_t)byte6;
   return addr;
 }
 
