@@ -78,35 +78,43 @@ void convert_ethernet_hdr_to_network_byte_order (sr_ethernet_hdr_t *hdr)
   hdr->ether_type = htons (hdr->ether_type);
 }
 
+uint8_t *create_arp_packet (uint8_t *sha, uint32_t sip, uint8_t *tha, uint32_t tip, unsigned short opcode)
+{
+  /* malloc space for ARP packet */
+  unsigned int len = sizeof (sr_ethernet_hdr_t) + sizeof (sr_arp_hdr_t);
+  uint8_t *pkt = malloc (len);
+  sr_ethernet_hdr_t *ethernet_hdr = (sr_ethernet_hdr_t *)pkt;
+  sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(pkt + sizeof (sr_ethernet_hdr_t));
+
+  /* fill out the ethernet header and convert to network byte order */
+  memcpy (ethernet_hdr->ether_dhost, tha, ETHER_ADDR_LEN);
+  memcpy (ethernet_hdr->ether_shost, sha, ETHER_ADDR_LEN);
+  ethernet_hdr->ether_type = ethertype_arp;
+  convert_ethernet_hdr_to_network_byte_order (ethernet_hdr);
+
+  /* fill out the ARP header and convert to network byte order */
+  arp_hdr->ar_hrd = arp_hrd_ethernet;
+  arp_hdr->ar_pro = ethertype_ip;
+  arp_hdr->ar_hln = ETHER_ADDR_LEN;
+  arp_hdr->ar_pln = IP_ADDR_LEN;
+  arp_hdr->ar_op = opcode;
+  memcpy (arp_hdr->ar_sha, sha, ETHER_ADDR_LEN);
+  arp_hdr->ar_sip = sip;
+  memcpy (arp_hdr->ar_tha, tha, ETHER_ADDR_LEN);
+  arp_hdr->ar_tip = tip;
+  convert_arp_hdr_to_network_byte_order (arp_hdr);
+
+  return pkt;
+}
+
+/* This function creates an arp reply for an arp requests and sends it
+   over the wire */
 void handle_arp_request (struct sr_instance *sr, 
         sr_arp_hdr_t *req_arp_hdr, 
         struct sr_if *iface)
 {
-  /* malloc space for reply packet */
   unsigned int reply_len = sizeof (sr_ethernet_hdr_t) + sizeof (sr_arp_hdr_t);
-  uint8_t *reply_pkt = malloc (reply_len);
-  sr_ethernet_hdr_t *reply_ethernet_hdr = (sr_ethernet_hdr_t *)reply_pkt;
-  sr_arp_hdr_t *reply_arp_hdr = (sr_arp_hdr_t *)(reply_pkt + sizeof (sr_ethernet_hdr_t));
-
-  /* fill out the ethernet header and convert to network byte order */
-  memcpy (reply_ethernet_hdr->ether_dhost, req_arp_hdr->ar_sha, ETHER_ADDR_LEN);
-  memcpy (reply_ethernet_hdr->ether_shost, iface->addr, ETHER_ADDR_LEN);
-  reply_ethernet_hdr->ether_type = ethertype_arp;
-  convert_ethernet_hdr_to_network_byte_order (reply_ethernet_hdr);
-
-  /* fill out the ARP header and convert to network byte order */
-  reply_arp_hdr->ar_hrd = arp_hrd_ethernet;
-  reply_arp_hdr->ar_pro = ethertype_ip;
-  reply_arp_hdr->ar_hln = ETHER_ADDR_LEN;
-  reply_arp_hdr->ar_pln = IP_ADDR_LEN;
-  reply_arp_hdr->ar_op = arp_op_reply;
-  memcpy (reply_arp_hdr->ar_sha, iface->addr, ETHER_ADDR_LEN);
-  reply_arp_hdr->ar_sip = iface->ip;
-  memcpy (reply_arp_hdr->ar_tha, req_arp_hdr->ar_sha, ETHER_ADDR_LEN);
-  reply_arp_hdr->ar_tip = req_arp_hdr->ar_sip;
-  convert_arp_hdr_to_network_byte_order (reply_arp_hdr);
-
-  /* send ARP reply over the wire */
+  uint8_t *reply_pkt = create_arp_packet (iface->addr, iface->ip, req_arp_hdr->ar_sha, req_arp_hdr->ar_sip, arp_op_reply);
   sr_send_packet (sr, reply_pkt, reply_len, iface->name);
   free (reply_pkt);
 }
