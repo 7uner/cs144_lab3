@@ -78,6 +78,10 @@ void convert_ethernet_hdr_to_network_byte_order (sr_ethernet_hdr_t *hdr)
   hdr->ether_type = htons (hdr->ether_type);
 }
 
+/* This function creates an arp packet for the given sha, sip, tha, tip and opcode. It returns
+   a pointer to a raw ethernet frame containing the arp packet with all the appropariate fields in 
+   network byte order. The packet returned is ready to be send over the wire. The caller MUST
+   free the memory of this packet. */
 uint8_t *create_arp_packet (uint8_t *sha, uint32_t sip, uint8_t *tha, uint32_t tip, unsigned short opcode)
 {
   /* malloc space for ARP packet */
@@ -109,7 +113,7 @@ uint8_t *create_arp_packet (uint8_t *sha, uint32_t sip, uint8_t *tha, uint32_t t
 
 /* This function creates an arp reply for an arp requests and sends it
    over the wire */
-void handle_arp_request (struct sr_instance *sr, 
+void create_and_send_arp_reply (struct sr_instance *sr, 
         sr_arp_hdr_t *req_arp_hdr, 
         struct sr_if *iface)
 {
@@ -133,7 +137,7 @@ void send_queued_packet (struct sr_instance *sr,
 
 /* This function sends all packets that were waiting on an arp reply, if any, 
    removes them from the waiting queue, and frees all memory associated. */
-void handle_arp_reply (struct sr_instance *sr, 
+void send_packets_waiting_on_reply (struct sr_instance *sr, 
                        sr_arp_hdr_t *arp_hdr, 
                        struct sr_if *iface, 
                        struct sr_arpreq *req)
@@ -189,12 +193,12 @@ void sr_handle_arp_packet (struct sr_instance *sr,
   /* Step 6: check op code and process accordingly; for a request send reply, 
      for a reply send packets waiting on the reply */
   if (arp_hdr->ar_op == arp_op_request)
-    handle_arp_request (sr, arp_hdr, iface);
+    create_and_send_arp_reply (sr, arp_hdr, iface);
   else if (arp_hdr->ar_op == arp_op_reply)
   {
     if (isBroadcast) /* reply should be unicast */
       return;
-    handle_arp_reply (sr, arp_hdr, iface, req); 
+    send_packets_waiting_on_reply (sr, arp_hdr, iface, req); 
   }
   else
     fprintf (stderr, "Unknown arp op code %d. Dropping arp packet.\n", arp_hdr->ar_op);
