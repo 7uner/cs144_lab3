@@ -10,6 +10,7 @@
 #include "sr_router.h"
 #include "sr_if.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
 
 /* 
   This function gets called every second. For each request sent out, we keep
@@ -308,3 +309,32 @@ void *sr_arpcache_timeout(void *sr_ptr) {
     return NULL;
 }
 
+
+void print_cache_entry (struct sr_arpentry* entry)
+{
+    time_t ttl = 15 - (time (NULL) - entry->added);
+    fprintf (stderr, "--------------- ARP Cache Entry ------------\n");
+    fprintf (stderr, "| mac = ");
+    print_addr_eth (entry->mac);
+    fprintf (stderr, "| ip = ");
+    print_addr_ip_int (ntohl(entry->ip));
+    fprintf (stderr, "| ttl: %d\n", ttl);
+    fprintf (stderr, "| valid: %d\n", entry->valid);
+    fprintf (stderr, "--------------------------------------------\n");
+}
+
+void sr_arpcache_print_cache (struct sr_arpcache *cache)
+{
+    pthread_mutex_lock (&(cache->lock));
+
+    fprintf (stderr, "***-> Printing ARP Cache\n");
+   
+    /* print cache entries */
+    int i;
+    for (i = 0; i < SR_ARPCACHE_SZ; i++) {
+        if (cache->entries[i].valid)
+            print_cache_entry (&(cache->entries[i]));
+    }
+
+    pthread_mutex_unlock (&(cache->lock));
+}

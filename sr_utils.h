@@ -43,6 +43,7 @@ uint16_t ethertype(uint8_t *buf);
 uint8_t ip_protocol(uint8_t *buf);
 int eth_addr_equals (const uint8_t *addr1, const uint8_t *addr2);
 ethernet_addr_t mac_string_to_bytes (char *str);
+char *mac_bytes_to_string (ethernet_addr_t bytes);
 
 void print_addr_eth(uint8_t *addr);
 void print_addr_ip(struct in_addr address);

@@ -5,6 +5,8 @@
 #include "sr_utils.h"
 
 
+#define MAC_ADDR_STR_LEN 17
+
 uint16_t cksum (const void *_data, int len) {
   const uint8_t *data = _data;
   uint32_t sum;
@@ -48,6 +50,16 @@ ethernet_addr_t mac_string_to_bytes (char *mac_str)
   return addr;
 }
 
+/* Convert a the sequence of bytes for a MAC address to the string version of the address. 
+   Caller must free the string returned. */
+char *mac_bytes_to_string (ethernet_addr_t bytes)
+{
+  char *str = malloc (MAC_ADDR_STR_LEN + 1);
+  str[MAC_ADDR_STR_LEN] = '\0';
+
+  sprintf(str, "%x:%x:%x:%x:%x:%x", bytes.bytes[0], bytes.bytes[1], bytes.bytes[2], bytes.bytes[3], bytes.bytes[4], bytes.bytes[5]);
+  return str;
+}
 
 uint16_t ethertype(uint8_t *buf) {
   sr_ethernet_hdr_t *ehdr = (sr_ethernet_hdr_t *)buf;

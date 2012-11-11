@@ -210,7 +210,7 @@ void sr_handle_ip_packet (struct sr_instance *sr,
         struct sr_if *iface)
 {
   // TODO: implement
-  printf ("In sr_handle_ip_packet: NOT IMPLEMENTED.\n");
+  fprintf (stderr, "In sr_handle_ip_packet: NOT IMPLEMENTED.\n");
 }
 
 
@@ -243,7 +243,7 @@ void sr_handlepacket(struct sr_instance *sr,
   assert (packet);
   assert (interface);
 
-  printf ("*** -> Received packet of length %d \n",len);
+  fprintf (stderr, "*** -> Received packet of length %d \n",len);
   print_hdrs (packet, len);
 
   /* fill in code here */
@@ -267,7 +267,7 @@ void sr_handlepacket(struct sr_instance *sr,
      not a broadcast */
     if (!isBroadcast && !eth_addr_equals (ether_hdr->ether_dhost, iface->addr))
     { 
-      printf ("Dropping arp packet. Destination eth_addr: %s not recognized.\n", ether_hdr->ether_dhost);
+      fprintf (stderr, "Dropping arp packet. Destination eth_addr: %s not recognized.\n", ether_hdr->ether_dhost);
       return;
     }
     sr_handle_arp_packet (sr, (sr_arp_hdr_t *)(packet + sizeof (sr_ethernet_hdr_t)), 
@@ -283,5 +283,7 @@ void sr_handlepacket(struct sr_instance *sr,
   // }
   else
     fprintf(stderr, "Unknown ethertype: %d. Dropping packet.\n", ethertype (packet));
+
+  sr_arpcache_print_cache (&(sr->cache));
 }/* end sr_ForwardPacket */
 
