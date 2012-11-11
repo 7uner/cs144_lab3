@@ -1,0 +1,13 @@
+Student: Diego Rafael Moreno Ferrer
+SUID: rmferrer
+email: rmferrer@cs.stanford.edu
+
+CS144 
+README for Lab 3
+
+Discussion for ARP:
+
+- mention that handle arp follows rfc and not handout
+- added update to arpcache
+- changed arpcache to avoid duplucate entries
+- test code for arp how to run
