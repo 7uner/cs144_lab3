@@ -149,6 +149,60 @@ struct sr_arpreq *sr_arpcache_insert (struct sr_arpcache *cache,
     return req;
 }
 
+/* This method performs two functions:
+   1) Looks up this IP in the request queue. If it is found, if updates the ptr_to_req
+      argument to point to the to the sr_arpreq with this IP. Otherwise, it updates it to NULL.
+   2) Updates this IP to MAC mapping in the cache if there is an existing mapping 
+      for this ip in the cache, and marks it valid. If an entry was updated it returns 1
+      and otherwise returns 0. */
+int sr_arpcache_update (struct sr_arpcache *cache,
+                                     unsigned char *mac,
+                                     uint32_t ip, 
+                                     struct sr_arpreq **ptr_to_req)
+{
+    int updated = 0;
+
+    pthread_mutex_lock (&(cache->lock));
+    
+    struct sr_arpreq *req, *prev = NULL, *next = NULL; 
+    for (req = cache->requests; req != NULL; req = req->next) {
+        if (req->ip == ip) {            
+            if (prev) {
+                next = req->next;
+                prev->next = next;
+            } 
+            else {
+                next = req->next;
+                cache->requests = next;
+            }
+            
+            break;
+        }
+        prev = req;
+    }
+    
+    /* Look for a cache entry with the same ip to update */
+    int i;
+    for (i = 0; i < SR_ARPCACHE_SZ; i++) {
+        if (cache->entries[i].ip == ip)
+            break;
+    }
+    
+    /* If found an existing matching entry update it, othewise no-op. */
+    if (i != SR_ARPCACHE_SZ) {
+        memcpy (cache->entries[i].mac, mac, 6);
+        cache->entries[i].ip = ip;
+        cache->entries[i].added = time (NULL);
+        cache->entries[i].valid = 1;
+        updated = 1;
+    }
+    
+    pthread_mutex_unlock (&(cache->lock));
+    
+    *ptr_to_req = req;
+    return updated;
+}
+
 /* Frees all memory associated with this arp request entry. If this arp request
    entry is on the arp request queue, it is removed from the queue. */
 void sr_arpreq_destroy(struct sr_arpcache *cache, struct sr_arpreq *entry) {

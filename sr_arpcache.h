@@ -131,6 +131,17 @@ struct sr_arpreq *sr_arpcache_insert(struct sr_arpcache *cache,
                                      unsigned char *mac,
                                      uint32_t ip);
 
+/* This method performs two functions:
+   1) Looks up this IP in the request queue. If it is found, if updates the ptr_to_req
+      argument to point to the to the sr_arpreq with this IP. Otherwise, it updates it to NULL.
+   2) Updates this IP to MAC mapping in the cache if there is an existing mapping 
+      for this ip in the cache, and marks it valid. If an entry was updated it returns 1
+      and otherwise returns 0. */
+int sr_arpcache_update (struct sr_arpcache *cache,
+                                     unsigned char *mac,
+                                     uint32_t ip, 
+                                     struct sr_arpreq **ptr_to_req);
+
 /* Frees all memory associated with this arp request entry. If this arp request
    entry is on the arp request queue, it is removed from the queue. */
 void sr_arpreq_destroy(struct sr_arpcache *cache, struct sr_arpreq *entry);

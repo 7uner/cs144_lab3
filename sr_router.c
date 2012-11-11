@@ -82,9 +82,6 @@ void handle_arp_request (struct sr_instance *sr,
         sr_arp_hdr_t *req_arp_hdr, 
         struct sr_if *iface)
 {
-  /* we can assume arp request is for us (our ip) since vns_comm.c module has already 
-     performed that check (see sr_arp_req_not_for_us function) */
-
   /* malloc space for reply packet */
   unsigned int reply_len = sizeof (sr_ethernet_hdr_t) + sizeof (sr_arp_hdr_t);
   uint8_t *reply_pkt = malloc (reply_len);
@@ -114,6 +111,8 @@ void handle_arp_request (struct sr_instance *sr,
   free (reply_pkt);
 }
 
+/* Sends a packet that was waiting on an arp reply. Just updates 
+   the ethernet destination field with the arp reply data and sends */
 void send_queued_packet (struct sr_instance *sr, 
                          struct sr_packet *packet, 
                          uint8_t *tha)
@@ -124,15 +123,13 @@ void send_queued_packet (struct sr_instance *sr,
   sr_send_packet (sr, packet->buf, len, packet->iface);
 }
 
+/* This function sends all packets that were waiting on an arp reply, if any, 
+   removes them from the waiting queue, and frees all memory associated. */
 void handle_arp_reply (struct sr_instance *sr, 
                        sr_arp_hdr_t *arp_hdr, 
-                       struct sr_if *iface)
+                       struct sr_if *iface, 
+                       struct sr_arpreq *req)
 {
-  if (arp_hdr->ar_tip != iface->ip)
-    return;
-
-  struct sr_arpreq *req = sr_arpcache_insert(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip);
-
   if (req)
   {
     for (struct sr_packet *pkt = req->packets; pkt != NULL; pkt = pkt->next)
@@ -142,6 +139,10 @@ void handle_arp_reply (struct sr_instance *sr,
   }
 }
 
+/* This function takes in an arp packet (a ptr to the arp header) and processes it
+   according to the algorithm in the "Packet reception" section of RFC826. i.e. 
+   updates the ARP cache appropriately and in case of an ARP requests generates a 
+   reply and in case of an ARP reply it sends all packets waiting on that reply. */
 void sr_handle_arp_packet (struct sr_instance *sr,
         sr_arp_hdr_t *arp_hdr,
         unsigned int len,
@@ -157,20 +158,35 @@ void sr_handle_arp_packet (struct sr_instance *sr,
 
   convert_arp_hdr_to_host_byte_order (arp_hdr);
 
-  /* drop packet if it is not for IP address resolution or if its not over ethernet */
+  /* Steps 1 and 2 of RFC 826 packet reception algorithm: 
+     drop packet if it is not for IP address resolution or if its not over ethernet */
   if (arp_hdr->ar_hrd != arp_hrd_ethernet || arp_hdr->ar_pro != ethertype_ip)
   {
     fprintf (stderr, "Received an ARP packet either non-ethernet or to resolve an address that is not IP.\n");
     return;
   }
 
+  /* Step 3: if ARP cache contains an entry for the IP of sender update the cache */
+  struct sr_arpreq *req;
+  int updated = sr_arpcache_update(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip, &req);
+
+  /* Step 4: drop the packet if its not destined to us. */
+  if (arp_hdr->ar_tip != iface->ip)
+    return;
+
+  /* Step 5: if cache didn't contain an entry for the sender's ip create one. */
+  if (!updated)
+    req = sr_arpcache_insert(&(sr->cache), arp_hdr->ar_sha, arp_hdr->ar_sip);
+
+  /* Step 6: check op code and process accordingly; for a request send reply, 
+     for a reply send packets waiting on the reply */
   if (arp_hdr->ar_op == arp_op_request)
     handle_arp_request (sr, arp_hdr, iface);
   else if (arp_hdr->ar_op == arp_op_reply)
   {
     if (isBroadcast) /* reply should be unicast */
       return;
-    handle_arp_reply (sr, arp_hdr, iface); 
+    handle_arp_reply (sr, arp_hdr, iface, req); 
   }
   else
     fprintf (stderr, "Unknown arp op code %d. Dropping arp packet.\n", arp_hdr->ar_op);
