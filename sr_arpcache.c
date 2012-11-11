@@ -318,7 +318,7 @@ void print_cache_entry (struct sr_arpentry* entry)
     print_addr_eth (entry->mac);
     fprintf (stderr, "| ip = ");
     print_addr_ip_int (ntohl(entry->ip));
-    fprintf (stderr, "| ttl: %d\n", ttl);
+    fprintf (stderr, "| ttl: %d\n", (int)ttl);
     fprintf (stderr, "| valid: %d\n", entry->valid);
     fprintf (stderr, "--------------------------------------------\n");
 }
@@ -327,7 +327,7 @@ void sr_arpcache_print_cache (struct sr_arpcache *cache)
 {
     pthread_mutex_lock (&(cache->lock));
 
-    fprintf (stderr, "***-> Printing ARP Cache\n");
+    fprintf (stderr, "*** -> Printing ARP Cache\n");
    
     /* print cache entries */
     int i;

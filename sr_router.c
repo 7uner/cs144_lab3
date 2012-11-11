@@ -73,6 +73,16 @@ void convert_arp_hdr_to_network_byte_order (sr_arp_hdr_t *hdr)
   /* sip and tip should aleady be in network byte order */  
 }
 
+void convert_ip_hdr_to_host_byte_order (sr_ip_hdr_t *hdr)
+{
+  hdr->ip_len = ntohs (hdr->ip_len);
+  // hdr->ip_id = ntohs (hdr->ip_id);
+  // hdr->ip_off = ntohs (hdr->ip_off);
+  hdr->ip_src = ntohl (hdr->ip_src);
+  hdr->ip_dst = ntohl (hdr->ip_dst);
+  fprintf(stderr, "in convert_ip_hdr_to_network_byte_order. NOT IMPLEMENTED.\n");
+}
+
 void convert_ethernet_hdr_to_network_byte_order (sr_ethernet_hdr_t *hdr)
 {
   hdr->ether_type = htons (hdr->ether_type);
@@ -151,6 +161,24 @@ void send_packets_waiting_on_reply (struct sr_instance *sr,
   }
 }
 
+int sanity_check_arp_packet (sr_arp_hdr_t *arp_hdr, unsigned int len, int isBroadcast)
+{
+  int drop = 0;
+
+  /* drop packet if it does not have the min length of an arp packet */
+  if (len < sizeof (sr_arp_hdr_t))
+  {
+    fprintf (stderr, "Dropping arp packet. Too short. len: %d.\n", len);
+    drop = 1;
+  }
+  if (arp_hdr->ar_op == arp_op_reply && isBroadcast)
+  {
+    fprintf(stderr, "Dropping arp packet. Ethernet broacast and an arp_reply.\n");
+    drop = 1; /* reply should be unicast */
+  }
+  return drop;
+}
+
 /* This function takes in an arp packet (a ptr to the arp header) and processes it
    according to the algorithm in the "Packet reception" section of RFC826. i.e. 
    updates the ARP cache appropriately and in case of an ARP requests generates a 
@@ -161,14 +189,12 @@ void sr_handle_arp_packet (struct sr_instance *sr,
         struct sr_if *iface, 
         int isBroadcast)
 {
-  /* drop packet if it does not have the min length of an arp packet */
-  if (len < sizeof (sr_arp_hdr_t))
-  {
-    fprintf (stderr, "Dropping arp packet. Too short. len: %d.\n", len);
-    return;
-  }
-
   convert_arp_hdr_to_host_byte_order (arp_hdr);
+
+  int drop = sanity_check_arp_packet (arp_hdr, len, isBroadcast);
+
+  if (drop)
+    return;
 
   /* Steps 1 and 2 of RFC 826 packet reception algorithm: 
      drop packet if it is not for IP address resolution or if its not over ethernet */
@@ -195,13 +221,37 @@ void sr_handle_arp_packet (struct sr_instance *sr,
   if (arp_hdr->ar_op == arp_op_request)
     create_and_send_arp_reply (sr, arp_hdr, iface);
   else if (arp_hdr->ar_op == arp_op_reply)
-  {
-    if (isBroadcast) /* reply should be unicast */
-      return;
     send_packets_waiting_on_reply (sr, arp_hdr, iface, req); 
-  }
   else
     fprintf (stderr, "Unknown arp op code %d. Dropping arp packet.\n", arp_hdr->ar_op);
+}
+
+int sanity_check_ip_packet (sr_ip_hdr_t *ip_hdr, unsigned int len)
+{
+  int drop = 0;
+
+  /* drop packet if it does not have the min length of an arp packet */
+  if (len < sizeof (sr_ip_hdr_t))
+  {
+    fprintf (stderr, "Dropping ip packet. Too short. len: %d.\n", len);
+    drop = 1;
+  }
+  /* drop the packet if its IPv6 */
+  if (ip_hdr->ip_v != 4)
+  {
+    fprintf (stderr, "Dropping ip packet. Version not supported. version = %d\n", ip_hdr->ip_v);
+    drop = 1;
+  }
+  /* drop the packet if the header checksum verification fails */
+  uint16_t chksum = ip_hdr->ip_sum;
+  ip_hdr->ip_sum = 0;
+  if (cksum ((void *)ip_hdr, sizeof(sr_ip_hdr_t)) != chksum)
+  {
+    fprintf (stderr, "Dropping ip packet. Corrupted checksum. %d vs %d\n", cksum ((void *)ip_hdr, IP_ADDR_LEN), chksum);
+    drop = 1;
+  }
+
+  return drop;
 }
 
 void sr_handle_ip_packet (struct sr_instance *sr,
@@ -209,6 +259,16 @@ void sr_handle_ip_packet (struct sr_instance *sr,
         unsigned int len,
         struct sr_if *iface)
 {
+  sr_ip_hdr_t *ip_hdr = (sr_ip_hdr_t *)packet;
+  
+  int drop = sanity_check_ip_packet (ip_hdr, len);
+
+  if (drop)
+    return;
+
+  convert_ip_hdr_to_host_byte_order (ip_hdr);
+
+
   // TODO: implement
   fprintf (stderr, "In sr_handle_ip_packet: NOT IMPLEMENTED.\n");
 }
@@ -273,14 +333,14 @@ void sr_handlepacket(struct sr_instance *sr,
     sr_handle_arp_packet (sr, (sr_arp_hdr_t *)(packet + sizeof (sr_ethernet_hdr_t)), 
                           len - sizeof (sr_ethernet_hdr_t), iface, isBroadcast);
   }
-  // // TODO: continue
-  // else if (ethertype (packet) == ethertype_ip)
-  // {
-  //   /* drop packet if it's not destined to us */
-  //   if (!eth_addr_equals (ether_hdr->ether_dhost, iface->addr))
-  //     return;
-  //   sr_handle_ip_packet (sr, packet, len, iface);
-  // }
+  else if (ethertype (packet) == ethertype_ip)
+  {
+    /* drop packet if it's not destined to us */
+    if (!eth_addr_equals (ether_hdr->ether_dhost, iface->addr))
+      return;
+    sr_handle_ip_packet (sr, packet + sizeof (sr_ethernet_hdr_t),
+                         len - sizeof (sr_ethernet_hdr_t), iface);
+  }
   else
     fprintf(stderr, "Unknown ethertype: %d. Dropping packet.\n", ethertype (packet));
 
